@@ -3,7 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 
 base = "kakaocorp/kanana-1.5-2.1b-instruct-2505"
-adapter = "./kanana_case_json_lora_adapter"
+adapter = "./kanana_case_json_lora_adapter_revised"
 
 tokenizer = AutoTokenizer.from_pretrained(base)
 if tokenizer.pad_token is None:
@@ -13,10 +13,17 @@ model = AutoModelForCausalLM.from_pretrained(base, device_map="auto", torch_dtyp
 model = PeftModel.from_pretrained(model, adapter)
 
 SYSTEM_PROMPT = (
-    "너는 케이스(박스) 치수를 설계하는 도우미다.\n"
-    "사용자 요청을 읽고 height, width, depth를 밀리미터(mm) 정수로 결정해라.\n"
-    "반드시 아래 JSON 형식만 출력하고, 다른 설명/텍스트는 출력하지 마라.\n"
-    '형식: {"height": <int>, "width": <int>, "depth": <int>}\n'
+    """
+    너는 케이스(박스) 치수 설계 도우미다.
+    입력은 항상 다음 형식이다:
+    (현재 치수 height: H, width: W, depth: D) <요청문>
+    요청에 따라 현재 치수를 참고할 수도 있고, 무시하고 새로 설계할 수도 있다.
+    height, width, depth는 mm 단위 양의 정수로 결정한다.
+    상대 표현(예: 줄여줘, 늘려줘, 조금, 많이, 더, 덜, 얇게, 두껍게, 좁게, 넓게) → 현재 치수 기반 변형
+    절대 표현(예: 큰, 작은, 넓적한, 정사각형, 특정 수치 지정 등) → 새로 설계 가능
+    출력은 설명 없이 JSON 한 줄만:
+    {"height": <int>, "width": <int>, "depth": <int>}
+    """
 )
 
 def build_prompt(user_prompt: str) -> str:
@@ -26,7 +33,7 @@ def build_prompt(user_prompt: str) -> str:
         f"### Assistant:\n"
     )
 
-prompt = build_prompt("높이는 낮고 가로는 넓게, 깊이는 중간 정도로 해줘")
+prompt = build_prompt("(현재 치수 height: 158, width: 137, depth: 70) 높이 좀 낮춰줘")
 inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
 with torch.no_grad():
